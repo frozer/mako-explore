@@ -1,6 +1,9 @@
 package com.example.makoexplore;
 
 import android.app.Activity;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.content.Intent;
 import android.graphics.Matrix;
 import android.graphics.PointF;
 import android.graphics.drawable.Drawable;
@@ -9,13 +12,23 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ListView;
 import android.widget.RelativeLayout;
+import android.widget.Toast;
 
 import androidx.core.widget.ImageViewCompat;
 
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.UUID;
+
 public class MainActivity extends Activity implements View.OnTouchListener {
     private static final String TAG = "Touch";
+    private static final int REQUEST_ENABLE_BT = 1;
 
     // These matrices will be used to move image
     Matrix matrix = new Matrix();
@@ -35,11 +48,24 @@ public class MainActivity extends Activity implements View.OnTouchListener {
     float centerX;
     float centerY;
 
+    // Bluetooth
+    BluetoothAdapter bluetoothAdapter;
+    ArrayList<String> pairedDeviceArrayList;
+
+    ListView listViewPairedDevice;
+    FrameLayout ButPanel;
+
+    ArrayAdapter<String> pairedDeviceAdapter;
+
+    ThreadConnectBTdevice myThreadConnectBTdevice;
+
+
+    private StringBuilder sb = new StringBuilder();
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
 
         ImageView view = (ImageView) findViewById(R.id.imageView);
         view.getViewTreeObserver().addOnGlobalLayoutListener(
@@ -55,6 +81,67 @@ public class MainActivity extends Activity implements View.OnTouchListener {
 
         view.setOnTouchListener(this);
 
+        listViewPairedDevice = (ListView)findViewById(R.id.pairedlist);
+
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+
+        if (bluetoothAdapter == null) {
+            Toast.makeText(this, "Bluetooth is not supported on this hardware platform", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        if (!bluetoothAdapter.isEnabled()) {
+            Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
+        }
+
+        setup();
+    }
+
+    private void setup() { // Создание списка сопряжённых Bluetooth-устройств
+
+        Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
+
+        if (pairedDevices.size() > 0) { // Если есть сопряжённые устройства
+
+            pairedDeviceArrayList = new ArrayList<>();
+
+            for (BluetoothDevice device : pairedDevices) { // Добавляем сопряжённые устройства - Имя + MAC-адресс
+                pairedDeviceArrayList.add(device.getName() + "\n" + device.getAddress());
+            }
+
+            pairedDeviceAdapter = new ArrayAdapter<>(this, R.layout.activity_main, pairedDeviceArrayList);
+            listViewPairedDevice.setAdapter(pairedDeviceAdapter);
+
+            listViewPairedDevice.setOnItemClickListener(new AdapterView.OnItemClickListener() { // Клик по нужному устройству
+
+                @Override
+                public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+
+                    listViewPairedDevice.setVisibility(View.GONE); // После клика скрываем список
+
+                    String  itemValue = (String) listViewPairedDevice.getItemAtPosition(position);
+                    String MAC = itemValue.substring(itemValue.length() - 17); // Вычленяем MAC-адрес
+
+                    BluetoothDevice device2 = bluetoothAdapter.getRemoteDevice(MAC);
+
+                    myThreadConnectBTdevice = new ThreadConnectBTdevice(device2);
+                    myThreadConnectBTdevice.start();  // Запускаем поток для подключения Bluetooth
+                }
+            });
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(myThreadConnectBTdevice!=null) myThreadConnectBTdevice.cancel();
     }
 
     public boolean onTouch(View v, MotionEvent event) {
