@@ -12,19 +12,15 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
-import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ListView;
-import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
-
-import androidx.core.widget.ImageViewCompat;
 
 import java.util.ArrayList;
 import java.util.Set;
-import java.util.UUID;
 
 public class MainActivity extends Activity implements View.OnTouchListener {
     private static final String TAG = "Touch";
@@ -44,6 +40,8 @@ public class MainActivity extends Activity implements View.OnTouchListener {
     PointF start = new PointF();
 
     // limit movement with this value
+    float correctionY;
+    float correctionX;
     float maxRadius;
     float centerX;
     float centerY;
@@ -53,6 +51,8 @@ public class MainActivity extends Activity implements View.OnTouchListener {
     ArrayList<String> pairedDeviceArrayList;
 
     ListView listViewPairedDevice;
+    TextView textInfo;
+
     FrameLayout ButPanel;
 
     ArrayAdapter<String> pairedDeviceAdapter;
@@ -82,6 +82,7 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         view.setOnTouchListener(this);
 
         listViewPairedDevice = (ListView)findViewById(R.id.pairedlist);
+        textInfo = (TextView) findViewById(R.id.textInfo);
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
@@ -90,6 +91,8 @@ public class MainActivity extends Activity implements View.OnTouchListener {
             finish();
             return;
         }
+
+        Toast.makeText(this, bluetoothAdapter.getName() + " " + bluetoothAdapter.getAddress(), Toast.LENGTH_LONG).show();
     }
 
     @Override
@@ -109,32 +112,12 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
 
         if (pairedDevices.size() > 0) { // Если есть сопряжённые устройства
+            for (BluetoothDevice device : pairedDevices) {
+                BluetoothDevice dev = bluetoothAdapter.getRemoteDevice(device.getAddress());
 
-            pairedDeviceArrayList = new ArrayList<>();
-
-            for (BluetoothDevice device : pairedDevices) { // Добавляем сопряжённые устройства - Имя + MAC-адресс
-                pairedDeviceArrayList.add(device.getName() + "\n" + device.getAddress());
+                myThreadConnectBTdevice = new ThreadConnectBTdevice(dev);
+                myThreadConnectBTdevice.start();  // Запускаем поток для подключения Bluetooth
             }
-
-            pairedDeviceAdapter = new ArrayAdapter<>(this, R.layout.activity_main, pairedDeviceArrayList);
-            listViewPairedDevice.setAdapter(pairedDeviceAdapter);
-
-            listViewPairedDevice.setOnItemClickListener(new AdapterView.OnItemClickListener() { // Клик по нужному устройству
-
-                @Override
-                public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-
-                    listViewPairedDevice.setVisibility(View.GONE); // После клика скрываем список
-
-                    String  itemValue = (String) listViewPairedDevice.getItemAtPosition(position);
-                    String MAC = itemValue.substring(itemValue.length() - 17); // Вычленяем MAC-адрес
-
-                    BluetoothDevice device2 = bluetoothAdapter.getRemoteDevice(MAC);
-
-                    myThreadConnectBTdevice = new ThreadConnectBTdevice(device2);
-                    myThreadConnectBTdevice.start();  // Запускаем поток для подключения Bluetooth
-                }
-            });
         }
     }
 
@@ -200,9 +183,12 @@ public class MainActivity extends Activity implements View.OnTouchListener {
             float offsetX = (imageView.getWidth() - d.getIntrinsicWidth()) / 2F;
             float offsetY = (imageView.getHeight() - d.getIntrinsicHeight()) / 2F;
 
+            correctionY = d.getIntrinsicHeight() / 2F;
+            correctionX = d.getIntrinsicWidth() / 2F;
+
             centerX = imageView.getWidth() / 2F;
             centerY = imageView.getHeight() / 2F;
-            maxRadius = centerX > centerY ? centerY : centerX;
+            maxRadius = Math.min(centerX, centerY);
 
             initialMatrix.setTranslate(offsetX, offsetY);
 
@@ -222,13 +208,30 @@ public class MainActivity extends Activity implements View.OnTouchListener {
 //        workArea.setLayoutParams(params);
 //    }
 
+    // https://math.stackexchange.com/questions/553478/how-covert-joysitck-x-y-coordinates-to-robot-motor-speed
     private void drive(float x, float y) {
-        float dx = x - centerX;
-        float dy = y - centerY;
+        int angle = -135;
+        double rad = angle * Math.PI / 180;
 
-        float accelX = Math.round(dx * 255 / maxRadius);
-        float accelY = Math.round(dy * 255 / maxRadius);
+        double newX = (x - centerX) * Math.cos(rad) - (y - centerY) * Math.sin(rad);
+        double newY = (y - centerY) * Math.cos(rad) + (x - centerX) * Math.sin(rad);
+        // angle between vector and X-axis
+        double theta = Math.atan2(newY, newX);
+        //
+        double magnitude = Math.sqrt(Math.pow(newX, 2) + Math.pow(newY, 2));
 
-        Log.d(TAG, "Accel X = " + accelX + ", Accel Y = " + accelY);
+        double xCoord = magnitude * Math.cos(theta);
+        double yCoord = magnitude * Math.sin(theta);
+
+        float rightMotorSpeed = Math.round(xCoord * 255 / maxRadius);
+        float leftMotorSpeed = -1 * Math.round(yCoord * 255 / maxRadius);
+
+
+        Log.d(TAG, "Right Motor Speed = " + rightMotorSpeed + ", Left Motor Speed = " + leftMotorSpeed);
+
+        String command = "" + rightMotorSpeed + " " + leftMotorSpeed;
+        if (myThreadConnectBTdevice.myThreadConnected !=  null) {
+            myThreadConnectBTdevice.myThreadConnected.write(command.getBytes());
+        }
     }
 }

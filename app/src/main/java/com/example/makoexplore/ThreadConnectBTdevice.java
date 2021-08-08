@@ -2,8 +2,6 @@ package com.example.makoexplore;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
-import android.view.View;
-import android.widget.Toast;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -11,7 +9,8 @@ import java.util.UUID;
 public class ThreadConnectBTdevice extends Thread { // Поток для коннекта с Bluetooth
     ThreadConnected myThreadConnected;
 
-    private UUID myUUID;
+    private UUID myUUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+
     private BluetoothSocket bluetoothSocket = null;
 
     public ThreadConnectBTdevice(BluetoothDevice device) {
@@ -50,7 +49,6 @@ public class ThreadConnectBTdevice extends Thread { // Поток для кон�
         }
 
         if(success) {  // Если законнектились, тогда открываем панель с кнопками и запускаем поток приёма и отправки данных
-
 
             myThreadConnected = new ThreadConnected(bluetoothSocket);
             myThreadConnected.start(); // запуск потока приёма и отправки данных
