@@ -50,9 +50,6 @@ public class MainActivity extends Activity implements View.OnTouchListener {
     BluetoothAdapter bluetoothAdapter;
     ArrayList<String> pairedDeviceArrayList;
 
-    ListView listViewPairedDevice;
-    TextView textInfo;
-
     FrameLayout ButPanel;
 
     ArrayAdapter<String> pairedDeviceAdapter;
@@ -80,9 +77,6 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         );
 
         view.setOnTouchListener(this);
-
-        listViewPairedDevice = (ListView)findViewById(R.id.pairedlist);
-        textInfo = (TextView) findViewById(R.id.textInfo);
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
@@ -226,12 +220,25 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         float rightMotorSpeed = Math.round(xCoord * 255 / maxRadius);
         float leftMotorSpeed = -1 * Math.round(yCoord * 255 / maxRadius);
 
+        if (rightMotorSpeed > 0) {
+            rightMotorSpeed+=100;
+        } else {
+            rightMotorSpeed-=100;
+        }
+
+        if (leftMotorSpeed > 0) {
+            leftMotorSpeed+=100;
+        } else {
+            leftMotorSpeed-=100;
+        }
+        String command = rightMotorSpeed + ":" + leftMotorSpeed;
+        command = command.replace(".0", "") + ";";
 
         Log.d(TAG, "Right Motor Speed = " + rightMotorSpeed + ", Left Motor Speed = " + leftMotorSpeed);
+        Log.d(TAG, command);
 
-        String command = "" + rightMotorSpeed + " " + leftMotorSpeed;
         if (myThreadConnectBTdevice.myThreadConnected !=  null) {
-            myThreadConnectBTdevice.myThreadConnected.write(command.getBytes());
+            myThreadConnectBTdevice.myThreadConnected.write((command).getBytes());
         }
     }
 }
