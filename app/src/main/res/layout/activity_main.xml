@@ -24,4 +24,18 @@
         android:layout_height="fill_parent"
         android:scaleType="matrix"
         android:src="@drawable/pin" />
+
+    <TextView
+        android:id="@+id/leftSpeedLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="LMS: 0" />
+
+    <TextView
+        android:id="@+id/rightSpeedLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/leftSpeedLabel"
+        android:text="RMS: 0" />
+
 </RelativeLayout>

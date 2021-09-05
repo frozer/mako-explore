@@ -22,9 +22,11 @@ import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Set;
 
+
 public class MainActivity extends Activity implements View.OnTouchListener {
     private static final String TAG = "Touch";
     private static final int REQUEST_ENABLE_BT = 1;
+    private static final double SCALE_FACTOR = 1.45;
 
     // These matrices will be used to move image
     Matrix matrix = new Matrix();
@@ -56,8 +58,8 @@ public class MainActivity extends Activity implements View.OnTouchListener {
 
     ThreadConnectBTdevice myThreadConnectBTdevice;
 
-
-    private StringBuilder sb = new StringBuilder();
+    TextView leftMotorSpeedLabel;
+    TextView rightMotorSpeedLabel;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -87,6 +89,9 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         }
 
         Toast.makeText(this, bluetoothAdapter.getName() + " " + bluetoothAdapter.getAddress(), Toast.LENGTH_LONG).show();
+
+        leftMotorSpeedLabel = (TextView) findViewById(R.id.leftSpeedLabel);
+        rightMotorSpeedLabel = (TextView) findViewById(R.id.rightSpeedLabel);
     }
 
     @Override
@@ -101,16 +106,19 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         setup();
     }
 
-    private void setup() { // Создание списка сопряжённых Bluetooth-устройств
+    /**
+     * Connect to paired BT device
+     */
+    private void setup() {
 
         Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
 
-        if (pairedDevices.size() > 0) { // Если есть сопряжённые устройства
+        if (pairedDevices.size() > 0) {
             for (BluetoothDevice device : pairedDevices) {
                 BluetoothDevice dev = bluetoothAdapter.getRemoteDevice(device.getAddress());
 
                 myThreadConnectBTdevice = new ThreadConnectBTdevice(dev);
-                myThreadConnectBTdevice.start();  // Запускаем поток для подключения Bluetooth
+                myThreadConnectBTdevice.start();
             }
         }
     }
@@ -142,6 +150,8 @@ public class MainActivity extends Activity implements View.OnTouchListener {
                 Log.d(TAG, "mode=NONE" );
 
                 matrix.set(initialMatrix);
+
+                drive(0, 0);
 
                 break;
 
@@ -177,9 +187,6 @@ public class MainActivity extends Activity implements View.OnTouchListener {
             float offsetX = (imageView.getWidth() - d.getIntrinsicWidth()) / 2F;
             float offsetY = (imageView.getHeight() - d.getIntrinsicHeight()) / 2F;
 
-            correctionY = d.getIntrinsicHeight() / 2F;
-            correctionX = d.getIntrinsicWidth() / 2F;
-
             centerX = imageView.getWidth() / 2F;
             centerY = imageView.getHeight() / 2F;
             maxRadius = Math.min(centerX, centerY);
@@ -187,28 +194,46 @@ public class MainActivity extends Activity implements View.OnTouchListener {
             initialMatrix.setTranslate(offsetX, offsetY);
 
             imageView.setImageMatrix(initialMatrix);
+
+            Log.d(TAG, "center X = " + centerX + ", center Y = " + centerY + ", max radius = " + maxRadius);
         }
     }
 
     private boolean isFit(float x, float y) {
-        float dx = x - centerX;
-        float dy = y - centerY;
-        return Math.sqrt(Math.pow(dx,2) + Math.pow(dy, 2)) <= maxRadius;
-    }
-//    private void resizeWorkArea() {
-//        ImageView workArea = (ImageView) findViewById(R.id.workArea);
-//        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(maxRadius, maxRadius);
-//
-//        workArea.setLayoutParams(params);
-//    }
-
-    // https://math.stackexchange.com/questions/553478/how-covert-joysitck-x-y-coordinates-to-robot-motor-speed
-    private void drive(float x, float y) {
         int angle = -135;
         double rad = angle * Math.PI / 180;
 
-        double newX = (x - centerX) * Math.cos(rad) - (y - centerY) * Math.sin(rad);
-        double newY = (y - centerY) * Math.cos(rad) + (x - centerX) * Math.sin(rad);
+        double newX = (x - centerX) * Math.cos(rad) - (centerY -y) * Math.sin(rad);
+        double newY = (centerY - y) * Math.cos(rad) + (x - centerX) * Math.sin(rad);
+        return Math.sqrt(Math.pow(newX,2) + Math.pow(newY, 2)) <= maxRadius;
+    }
+
+    private void drive(float x, float y) {
+
+        Log.d(TAG, "x = " + x + ", y = " + y);
+
+        double[] speeds = mode == DRAG ? convertCoordToSpeed(x, y) : new double[2];
+        String command = getCommand(speeds[0], speeds[1]);
+
+        Log.d(TAG, "LMS = " + speeds[0] + ", RMS = " + speeds[1]);
+
+        leftMotorSpeedLabel.setText("LMS: " + speeds[0]);
+        rightMotorSpeedLabel.setText("RMS: " + speeds[1]);
+
+        if (myThreadConnectBTdevice.myThreadConnected !=  null) {
+            myThreadConnectBTdevice.myThreadConnected.write((command).getBytes());
+        }
+    }
+
+    // https://math.stackexchange.com/questions/553478/how-covert-joysitck-x-y-coordinates-to-robot-motor-speed
+    private double[] convertCoordToSpeed(double x, double y) {
+        double[] res = new double[2];
+// Option 1.
+        int angle = -135;
+        double rad = angle * Math.PI / 180;
+
+        double newX = (x - centerX) * Math.cos(rad) - (centerY -y) * Math.sin(rad);
+        double newY = (centerY - y) * Math.cos(rad) + (x - centerX) * Math.sin(rad);
         // angle between vector and X-axis
         double theta = Math.atan2(newY, newX);
         //
@@ -217,28 +242,18 @@ public class MainActivity extends Activity implements View.OnTouchListener {
         double xCoord = magnitude * Math.cos(theta);
         double yCoord = magnitude * Math.sin(theta);
 
-        float rightMotorSpeed = Math.round(xCoord * 255 / maxRadius);
-        float leftMotorSpeed = -1 * Math.round(yCoord * 255 / maxRadius);
+        double rightMotorSpeed = Math.round(SCALE_FACTOR * Math.round(xCoord * 255 / maxRadius));
+        double leftMotorSpeed = Math.round(SCALE_FACTOR * -1 * Math.round( yCoord * 255 / maxRadius));
 
-        if (rightMotorSpeed > 0) {
-            rightMotorSpeed+=100;
-        } else {
-            rightMotorSpeed-=100;
-        }
+        res[0] = leftMotorSpeed;
+        res[1] = rightMotorSpeed;
 
-        if (leftMotorSpeed > 0) {
-            leftMotorSpeed+=100;
-        } else {
-            leftMotorSpeed-=100;
-        }
-        String command = rightMotorSpeed + ":" + leftMotorSpeed;
-        command = command.replace(".0", "") + ";";
+        return res;
+    }
 
-        Log.d(TAG, "Right Motor Speed = " + rightMotorSpeed + ", Left Motor Speed = " + leftMotorSpeed);
-        Log.d(TAG, command);
-
-        if (myThreadConnectBTdevice.myThreadConnected !=  null) {
-            myThreadConnectBTdevice.myThreadConnected.write((command).getBytes());
-        }
+    private String getCommand(double left, double right) {
+        String command = left + ":" + right;
+        // removing the ending .0, to avoid collisions on Arduino side
+        return command.replace(".0", "") + ";";
     }
 }
